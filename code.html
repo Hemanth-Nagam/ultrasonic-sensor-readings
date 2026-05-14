@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>LoRa Water Level Monitoring Dashboard</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Leaflet -->
+<link rel="stylesheet"
+href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<style>
+
+body{
+font-family:Arial;
+margin:0;
+background:#f4f6f8;
+}
+
+header{
+text-align:center;
+padding:20px;
+font-size:28px;
+font-weight:bold;
+}
+
+.statusPanel{
+display:flex;
+justify-content:center;
+gap:30px;
+flex-wrap:wrap;
+margin-bottom:30px;
+}
+
+.statusItem{
+background:white;
+padding:12px 20px;
+border-radius:10px;
+box-shadow:0 3px 8px rgba(0,0,0,0.2);
+text-align:center;
+}
+
+.statusItem div{
+font-size:18px;
+margin-top:5px;
+}
+
+.row{
+display:flex;
+justify-content:center;
+gap:30px;
+flex-wrap:wrap;
+margin-bottom:30px;
+}
+
+.card{
+width:250px;
+height:250px;
+background:white;
+border-radius:12px;
+box-shadow:0 4px 10px rgba(0,0,0,0.2);
+display:flex;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+cursor:pointer;
+transition:0.2s;
+padding:10px;
+text-align:center;
+}
+
+.card:hover{
+transform:translateY(-3px);
+}
+
+.imageCard{
+padding:0;
+overflow:hidden;
+}
+
+.dashboardImage{
+width:100%;
+height:100%;
+object-fit:cover;
+border-radius:12px;
+}
+
+#distance{
+font-size:22px;
+color:#1a73e8;
+font-weight:bold;
+line-height:1.6;
+}
+
+.csvBtn{
+background:#1a73e8;
+color:white;
+border:none;
+padding:8px 16px;
+border-radius:6px;
+cursor:pointer;
+margin-top:10px;
+margin-left:10px;
+}
+
+.viewBtn{
+background:#28a745;
+color:white;
+border:none;
+padding:8px 16px;
+border-radius:6px;
+cursor:pointer;
+margin-top:10px;
+}
+
+#mapSmall{
+width:180px;
+height:120px;
+border-radius:8px;
+}
+
+#map{
+width:80%;
+height:500px;
+margin:auto;
+}
+
+.graphWrapper{
+display:flex;
+justify-content:center;
+margin-bottom:30px;
+width:100%;
+padding:0 20px;
+box-sizing:border-box;
+}
+
+.graphCard{
+width:90%;
+max-width:1000px;
+background:white;
+padding:20px;
+border-radius:12px;
+box-shadow:0 4px 10px rgba(0,0,0,0.2);
+}
+
+.graphCard canvas{
+width:100% !important;
+height:350px !important;
+}
+
+.expand{
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:white;
+display:none;
+z-index:999;
+padding:40px;
+text-align:center;
+overflow:auto;
+}
+
+.back{
+position:absolute;
+top:20px;
+left:20px;
+padding:8px 16px;
+background:#1a73e8;
+color:white;
+border:none;
+border-radius:6px;
+cursor:pointer;
+}
+
+table{
+border-collapse:collapse;
+margin:auto;
+width:500px;
+}
+
+th,td{
+border:1px solid #ccc;
+padding:8px;
+text-align:center;
+}
+
+th{
+background:#1a73e8;
+color:white;
+}
+
+.historyScroll{
+height:300px;
+overflow-y:auto;
+}
+
+.distance-label div{
+font-family:Arial;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<header>
+LoRa Water Level Monitoring Dashboard
+</header>
+
+<!-- Status -->
+
+<div class="statusPanel">
+
+<div class="statusItem">
+LoRa node Status
+<div id="deviceStatus">🟡 Connecting...</div>
+</div>
+
+<div class="statusItem">
+Last Update
+<div id="lastUpdate">--</div>
+</div>
+
+<div class="statusItem">
+RSSI
+<div id="rssiValue">-- dBm</div>
+</div>
+
+<div class="statusItem">
+SNR
+<div id="snrValue">-- dB</div>
+</div>
+
+</div>
+
+<!-- Dashboard -->
+
+<div id="dashboard">
+
+<div class="row">
+
+<!-- Image -->
+
+<div class="card imageCard">
+
+<img
+src="lora.module.png"
+alt="Water Monitoring"
+class="dashboardImage">
+
+</div>
+
+<!-- Water Level -->
+
+<div class="card"
+onclick="openBlock('distanceBlock')">
+
+<h3>Water Level</h3>
+
+<div id="distance">
+
+<div id="waterLevelText">
+Water Level: -- cm (-- m)
+</div>
+
+</div>
+
+</div>
+
+<!-- Location -->
+
+<div class="card"
+onclick="openBlock('mapBlock')">
+
+<h3>Location</h3>
+
+<div id="mapSmall"></div>
+
+</div>
+
+</div>
+
+<!-- Graph -->
+
+<div class="graphWrapper">
+
+<div class="graphCard">
+
+<h3 style="text-align:center">
+Water Level Graph (Hover for Details)
+</h3>
+
+<canvas id="chart"></canvas>
+
+<div style="text-align:center; margin-top:20px;">
+
+<button class="viewBtn"
+onclick="openBlock('historyBlock')">
+View History
+</button>
+
+<button class="csvBtn"
+onclick="downloadCSV()">
+Download CSV
+</button>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<!-- Expanded Water -->
+
+<div class="expand" id="distanceBlock">
+
+<button class="back"
+onclick="closeBlock()">← Back</button>
+
+<h2>Water Level</h2>
+
+<h1 id="distanceLarge">--</h1>
+
+</div>
+
+<!-- Expanded Map -->
+
+<div class="expand" id="mapBlock">
+
+<button class="back"
+onclick="closeBlock()">← Back</button>
+
+<h2>Location</h2>
+
+<div id="map"></div>
+
+</div>
+
+<!-- History -->
+
+<div class="expand" id="historyBlock">
+
+<button class="back"
+onclick="closeBlock()">← Back</button>
+
+<h2>Historical Data (Last 24 Hours)</h2>
+
+<div class="historyScroll">
+
+<table id="dataTable">
+
+<tr>
+<th>Date & Time</th>
+<th>Water Level</th>
+</tr>
+
+</table>
+
+</div>
+
+</div>
+
+<script>
+
+/* Navigation */
+
+function openBlock(id){
+
+document.getElementById("dashboard")
+.style.display="none";
+
+document.getElementById(id)
+.style.display="block";
+
+if(id === "mapBlock"){
+
+setTimeout(() => {
+map.invalidateSize();
+}, 200);
+
+}
+
+}
+
+function closeBlock(){
+
+document.querySelectorAll(".expand")
+.forEach(e=>e.style.display="none");
+
+document.getElementById("dashboard")
+.style.display="block";
+
+}
+
+/* Firebase */
+
+const firebaseConfig = {
+
+apiKey:"AIzaSyBj4XZG64xFDE0-kcmqqr1Pw-_P6GYbWv8",
+
+authDomain:"lora-hr04.firebaseapp.com",
+
+databaseURL:
+"https://last-one-9cb4d-default-rtdb.asia-southeast1.firebasedatabase.app",
+
+projectId:"lora-hr04",
+
+storageBucket:"lora-hr04.appspot.com",
+
+messagingSenderId:"1046536800300",
+
+appId:"1:1046536800300:web:4f0db0f0f4b7c9d4a5f111"
+
+};
+
+if (!firebase.apps.length) {
+
+firebase.initializeApp(firebaseConfig);
+
+}
+
+const ref =
+firebase.database().ref("loradata");
+
+/* Firebase Connection */
+
+const connectedRef =
+firebase.database().ref(".info/connected");
+
+connectedRef.on("value", (snap) => {
+
+if (snap.val() === true) {
+
+document.getElementById(
+"deviceStatus").innerHTML =
+"🟢 online";
+
+} else {
+
+document.getElementById(
+"deviceStatus").innerHTML =
+"🔴 offline";
+
+}
+
+});
+
+/* Arrays */
+
+let labels=[];
+let waterValues=[];
+let historyData=[];
+
+/* Chart */
+
+const chart = new Chart(
+document.getElementById("chart"),{
+
+type:"line",
+
+data:{
+labels:labels,
+
+datasets:[{
+
+label:"Water Level (cm)",
+
+data:waterValues,
+
+borderColor:"blue",
+
+backgroundColor:"blue",
+
+borderWidth:3,
+
+fill:false,
+
+tension:0.3,
+
+pointRadius:5,
+
+pointHoverRadius:8
+
+}]
+},
+
+options:{
+
+responsive:true,
+maintainAspectRatio:false,
+animation:false,
+
+interaction:{
+mode:'index',
+intersect:false
+},
+
+plugins:{
+
+tooltip:{
+
+enabled:true,
+
+backgroundColor:'#ffffff',
+
+titleColor:'#000',
+
+bodyColor:'#000',
+
+borderColor:'#1a73e8',
+
+borderWidth:1,
+
+displayColors:false,
+
+titleFont:{
+size:14,
+weight:'bold'
+},
+
+bodyFont:{
+size:13
+},
+
+padding:10,
+
+callbacks:{
+
+title:function(context){
+
+return "Time : " + context[0].label;
+
+},
+
+label:function(context){
+
+return "Water Level : " +
+context.parsed.y + " cm";
+
+}
+
+}
+
+}
+
+},
+
+hover:{
+mode:'nearest',
+intersect:true
+},
+
+scales:{
+
+y:{
+beginAtZero:true,
+max:540,
+
+title:{
+display:true,
+text:"Water Level (cm)"
+}
+},
+
+x:{
+title:{
+display:true,
+text:"Time"
+}
+}
+
+}
+
+}
+
+});
+
+/* Coordinates */
+
+const sensorLat = 13.715955;
+const sensorLng = 79.594557;
+
+const gatewayLat = 13.714978467448718;
+const gatewayLng = 79.59132112559648;
+
+/* Distance Calculation */
+
+function calculateDistance(lat1, lon1, lat2, lon2){
+
+const R = 6371e3;
+
+const φ1 = lat1 * Math.PI / 180;
+const φ2 = lat2 * Math.PI / 180;
+
+const Δφ = (lat2-lat1) * Math.PI / 180;
+const Δλ = (lon2-lon1) * Math.PI / 180;
+
+const a =
+Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+Math.cos(φ1) * Math.cos(φ2) *
+Math.sin(Δλ/2) * Math.sin(Δλ/2);
+
+const c =
+2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+return R * c;
+
+}
+
+/* Distance */
+
+const distance =
+calculateDistance(
+sensorLat,
+sensorLng,
+gatewayLat,
+gatewayLng
+);
+
+const distanceText =
+Math.round(distance) + " m";
+
+/* Midpoint */
+
+const midLat =
+(sensorLat + gatewayLat)/2;
+
+const midLng =
+(sensorLng + gatewayLng)/2;
+
+/* Small Map */
+
+var mapSmall = L.map('mapSmall')
+.setView([13.7155,79.5930],15);
+
+L.tileLayer(
+'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+).addTo(mapSmall);
+
+/* Sensor Marker */
+
+L.marker([sensorLat,sensorLng])
+.addTo(mapSmall)
+.bindPopup("Water Level Sensor");
+
+/* Gateway Marker */
+
+L.marker([gatewayLat,gatewayLng])
+.addTo(mapSmall)
+.bindPopup("LoRa Gateway");
+
+/* Line */
+
+L.polyline([
+[sensorLat,sensorLng],
+[gatewayLat,gatewayLng]
+],{
+color:'blue',
+weight:4
+}).addTo(mapSmall);
+
+/* Distance Label */
+
+L.marker([midLat,midLng],{
+
+icon:L.divIcon({
+
+className:'distance-label',
+
+iconSize:[100,30],
+
+iconAnchor:[50,15],
+
+html:`
+<div style="
+background:white;
+padding:4px 8px;
+border-radius:15px;
+font-size:12px;
+font-weight:bold;
+border:1px solid #333;
+text-align:center;
+">
+${distanceText}
+</div>
+`
+
+})
+
+}).addTo(mapSmall);
+
+/* Main Map */
+
+var map = L.map('map')
+.setView([13.7155,79.5930],15);
+
+L.tileLayer(
+'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+).addTo(map);
+
+/* Sensor Marker */
+
+L.marker([sensorLat,sensorLng])
+.addTo(map)
+.bindPopup("Water Level Sensor");
+
+/* Gateway Marker */
+
+L.marker([gatewayLat,gatewayLng])
+.addTo(map)
+.bindPopup("LoRa Gateway");
+
+/* Line */
+
+L.polyline([
+[sensorLat,sensorLng],
+[gatewayLat,gatewayLng]
+],{
+color:'blue',
+weight:5
+}).addTo(map);
+
+/* Distance Label */
+
+L.marker([midLat,midLng],{
+
+icon:L.divIcon({
+
+className:'distance-label',
+
+iconSize:[130,35],
+
+iconAnchor:[65,18],
+
+html:`
+<div style="
+background:white;
+padding:6px 10px;
+border-radius:20px;
+font-size:14px;
+font-weight:bold;
+border:2px solid #333;
+text-align:center;
+box-shadow:0 2px 5px rgba(0,0,0,0.3);
+">
+Distance: ${distanceText}
+</div>
+`
+
+})
+
+}).addTo(map);
+
+/* Table */
+
+const table =
+document.getElementById("dataTable");
+
+/* CSV Download */
+
+function downloadCSV(){
+
+let csv =
+"Date,Time,WaterLevel(cm)\n";
+
+historyData.forEach(item => {
+
+csv +=
+`${item.date},${item.time},${item.waterLevel}\n`;
+
+});
+
+const blob = new Blob([csv], {
+type: "text/csv"
+});
+
+const link =
+document.createElement("a");
+
+link.href =
+URL.createObjectURL(blob);
+
+link.download =
+"water_level_last_24_hours.csv";
+
+document.body.appendChild(link);
+
+link.click();
+
+document.body.removeChild(link);
+
+}
+
+/* Load Last 24 Hours Data */
+
+ref.once("value", function(snapshot){
+
+labels=[];
+waterValues=[];
+historyData=[];
+
+table.innerHTML=`
+
+<tr>
+<th>Date & Time</th>
+<th>Water Level</th>
+</tr>
+
+`;
+
+const now = new Date();
+
+const oneDayAgo =
+new Date(now.getTime() - (24 * 60 * 60 * 1000));
+
+snapshot.forEach(function(childSnapshot){
+
+const data =
+childSnapshot.val();
+
+let distance =
+data?.uplink_message
+?.decoded_payload
+?.distance_cm ?? 0;
+
+let waterLevel =
+540 - distance;
+
+if(waterLevel < 0){
+waterLevel = 0;
+}
+
+let waterLevelMeter =
+(waterLevel / 100).toFixed(2);
+
+let timestamp =
+data?.uplink_message
+?.received_at ||
+new Date().toISOString();
+
+let firebaseDate =
+new Date(timestamp);
+
+if(firebaseDate >= oneDayAgo){
+
+let date =
+firebaseDate.toLocaleDateString();
+
+let time =
+firebaseDate.toLocaleTimeString();
+
+/* Save History */
+
+historyData.push({
+date: date,
+time: time,
+waterLevel: waterLevel
+});
+
+/* Update Water Level */
+
+document.getElementById(
+"waterLevelText").innerHTML =
+
+"Water Level: " +
+waterLevel + " cm (" +
+waterLevelMeter + " m)";
+
+document.getElementById(
+"distanceLarge").innerHTML =
+
+"Water Level: " +
+waterLevel + " cm (" +
+waterLevelMeter + " m)";
+
+/* Last Update */
+
+document.getElementById(
+"lastUpdate").innerHTML =
+time;
+
+/* RSSI */
+
+let rssi =
+data?.uplink_message
+?.rx_metadata?.[0]?.rssi ?? "--";
+
+let snr =
+data?.uplink_message
+?.rx_metadata?.[0]?.snr ?? "--";
+
+document.getElementById(
+"rssiValue").innerHTML =
+rssi + " dBm";
+
+document.getElementById(
+"snrValue").innerHTML =
+snr + " dB";
+
+/* Graph */
+
+labels.push(time);
+waterValues.push(waterLevel);
+
+/* Keep Only Last 20 */
+
+if(labels.length > 20){
+
+labels.shift();
+waterValues.shift();
+
+}
+
+/* Table */
+
+let row =
+table.insertRow(-1);
+
+row.insertCell(0).innerHTML =
+date + " " + time;
+
+row.insertCell(1).innerHTML =
+waterLevel + " cm";
+
+}
+
+});
+
+/* Update Chart */
+
+chart.data.labels = labels;
+
+chart.data.datasets[0].data =
+waterValues;
+
+chart.update();
+
+});
+
+/* Live Updates */
+
+ref.limitToLast(1)
+.on("child_added",
+function(snapshot){
+
+const data =
+snapshot.val();
+
+let distance =
+data?.uplink_message
+?.decoded_payload
+?.distance_cm ?? 0;
+
+let waterLevel =
+540 - distance;
+
+if(waterLevel < 0){
+waterLevel = 0;
+}
+
+let waterLevelMeter =
+(waterLevel / 100).toFixed(2);
+
+let timestamp =
+data?.uplink_message
+?.received_at ||
+new Date().toISOString();
+
+let firebaseDate =
+new Date(timestamp);
+
+let date =
+firebaseDate.toLocaleDateString();
+
+let time =
+firebaseDate.toLocaleTimeString();
+
+/* Update Water Level */
+
+document.getElementById(
+"waterLevelText").innerHTML =
+
+"Water Level: " +
+waterLevel + " cm (" +
+waterLevelMeter + " m)";
+
+document.getElementById(
+"distanceLarge").innerHTML =
+
+"Water Level: " +
+waterLevel + " cm (" +
+waterLevelMeter + " m)";
+
+/* Last Update */
+
+document.getElementById(
+"lastUpdate").innerHTML =
+time;
+
+/* Save History */
+
+historyData.push({
+date: date,
+time: time,
+waterLevel: waterLevel
+});
+
+/* Graph */
+
+labels.push(time);
+waterValues.push(waterLevel);
+
+/* Keep Only Last 20 */
+
+if(labels.length > 20){
+
+labels.shift();
+waterValues.shift();
+
+}
+
+/* Update Chart */
+
+chart.data.labels = labels;
+
+chart.data.datasets[0].data =
+waterValues;
+
+chart.update();
+
+/* Add Table Row */
+
+let row =
+table.insertRow(-1);
+
+row.insertCell(0).innerHTML =
+date + " " + time;
+
+row.insertCell(1).innerHTML =
+waterLevel + " cm";
+
+});
+
+</script>
+
+</body>
+</html>
